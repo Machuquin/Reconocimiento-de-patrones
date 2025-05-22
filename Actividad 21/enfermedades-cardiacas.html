@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Clasificación de Enfermedad Cardíaca</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.2.2"></script>
+</head>
+<body>
+    <h2>Clasificación Multiclase - Enfermedad Cardíaca (Datos Húngaros)</h2>
+
+    <input type="file" id="fileInput" accept=".data,.csv">
+    <button onclick="entrenarModelo()">Entrenar Modelo</button>
+    <br><br>
+
+    <label for="indexInput">Seleccionar índice de paciente para predecir:</label>
+    <input type="number" id="indexInput" min="0">
+    <button onclick="predecirPaciente()">Predecir</button>
+
+    <p id="resultado"></p>
+
+    <script>
+        let datos = [];
+        let modelo;
+
+        document.getElementById('fileInput').addEventListener('change', function(evt) {
+            const archivo = evt.target.files[0];
+            const lector = new FileReader();
+
+            lector.onload = function(e) {
+                const contenido = e.target.result;
+                const lineas = contenido.split('\n');
+                datos = [];
+
+                for (let linea of lineas) {
+                    if (linea.trim() === '') continue;
+                    const valores = linea.split(',').map(v => parseFloat(v));
+                    if (valores.length === 14) {
+                        datos.push(valores);
+                    }
+                }
+
+                alert("Archivo cargado correctamente. Total de registros: " + datos.length);
+            };
+
+            lector.readAsText(archivo);
+        });
+
+        async function entrenarModelo() {
+            if (datos.length === 0) {
+                alert("Primero carga el archivo de datos.");
+                return;
+            }
+
+            const xs = tf.tensor2d(datos.map(d => d.slice(0, 13)));
+            const ys = tf.tensor1d(datos.map(d => d[13]), 'int32');
+            const ysOneHot = tf.oneHot(ys, 5);
+
+            modelo = tf.sequential();
+            modelo.add(tf.layers.dense({ inputShape: [13], units: 20, activation: 'relu' }));
+            modelo.add(tf.layers.dense({ units: 10, activation: 'relu' }));
+            modelo.add(tf.layers.dense({ units: 5, activation: 'softmax' }));
+
+            modelo.compile({
+                optimizer: tf.train.adam(0.01),
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
+
+            await modelo.fit(xs, ysOneHot, {
+                epochs: 100,
+                shuffle: true,
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                        console.log(`Epoch ${epoch + 1}: loss=${logs.loss.toFixed(4)} accuracy=${logs.acc.toFixed(4)}`);
+                    }
+                }
+            });
+
+            xs.dispose();
+            ys.dispose();
+            ysOneHot.dispose();
+
+            alert("Entrenamiento completado.");
+        }
+
+        async function predecirPaciente() {
+            const index = parseInt(document.getElementById('indexInput').value);
+
+            if (!modelo) {
+                alert("Primero entrena el modelo.");
+                return;
+            }
+
+            if (isNaN(index) || index < 0 || index >= datos.length) {
+                alert("Índice fuera de rango.");
+                return;
+            }
+
+            const entrada = tf.tensor2d([datos[index].slice(0, 13)]);
+            const prediccion = modelo.predict(entrada);
+            const clase = (await prediccion.argMax(1).data())[0];
+
+            document.getElementById("resultado").innerText = `Predicción para el paciente ${index}: Clase ${clase}`;
+
+            entrada.dispose();
+            prediccion.dispose();
+        }
+    </script>
+</body>
+</html>
